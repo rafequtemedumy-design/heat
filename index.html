@@ -1,71 +1,386 @@
-public class ExtendedFinAnalysis {
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extended Surface (Fin) Heat Transfer Simulation</title>
+  
+  <!-- KaTeX for crisp formula rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
 
-    public static void main(String[] args) {
-        // --- 1. System Parameters ---
-        double tBase = 100.0;       // Base Temperature (°C)
-        double tAmbient = 25.0;     // Ambient Air Temperature (°C)
-        double length = 0.1;        // Length L (m) = 10 cm
-        double width = 0.05;        // Width w (m) = 5 cm
-        double thickness = 0.005;   // Thickness t (m) = 0.5 cm
-        double k = 205.0;           // Conductivity of Aluminum (W/m·K)
-        double h = 25.0;            // Convective heat transfer coefficient (W/m²·K)
-
-        // --- 2. Derived Geometric & Thermal Properties ---
-        double perimeter = 2 * (width + thickness);
-        double areaCross = width * thickness;
-        double areaSurface = perimeter * length;
-        double thetaBase = tBase - tAmbient;
-
-        // Fin parameter: m = sqrt(h * P / (k * Ac))
-        double m = Math.sqrt((h * perimeter) / (k * areaCross));
-        
-        // Base heat transfer constant: M = sqrt(h * P * k * Ac) * thetaBase
-        double bigM = Math.sqrt(h * perimeter * k * areaCross) * thetaBase;
-
-        // --- 3. Heat Transfer Performance Metrics (Insulated Tip) ---
-        double qFin = bigM * Math.tanh(m * length);
-        double qMax = h * areaSurface * thetaBase;
-        double efficiency = (qFin / qMax) * 100.0;
-        double effectiveness = qFin / (h * areaCross * thetaBase);
-
-        // --- 4. Print Summary Diagnostics ---
-        System.out.println("==================================================");
-        System.out.println("       RECTANGULAR FIN THERMAL ANALYSIS           ");
-        System.out.println("==================================================");
-        System.out.printf("Base Temp (Tb)        : %.1f °C\n", tBase);
-        System.out.printf("Ambient Temp (T_inf)  : %.1f °C\n", tAmbient);
-        System.out.printf("Fin Parameter (m)     : %.4f m⁻¹\n", m);
-        System.out.printf("Total Heat Rate (Q_fin): %.3f W\n", qFin);
-        System.out.printf("Fin Efficiency (η_fin): %.2f %%\n", efficiency);
-        System.out.printf("Fin Effectiveness (ε) : %.2f\n", effectiveness);
-        System.out.println("--------------------------------------------------");
-
-        // --- 5. Temperature Profile Table Across 3 Boundary Conditions ---
-        System.out.println("\n--- Temperature Profiles (°C) Along Fin Length ---");
-        System.out.printf("%-10s | %-16s | %-16s | %-16s\n", 
-            "x (m)", "1. Insulated Tip", "2. Convective Tip", "3. Infinite/Long");
-        System.out.println("----------------------------------------------------------------------");
-
-        int steps = 10;
-        double dx = length / steps;
-
-        for (int i = 0; i <= steps; i++) {
-            double x = i * dx;
-
-            // 1. Adiabatic / Insulated Tip
-            double tInsulated = tAmbient + thetaBase * (Math.cosh(m * (length - x)) / Math.cosh(m * length));
-
-            // 2. Convective Tip (Heat lost from end face)
-            double numConv = Math.cosh(m * (length - x)) + (h / (m * k)) * Math.sinh(m * (length - x));
-            double denConv = Math.cosh(m * length) + (h / (m * k)) * Math.sinh(m * length);
-            double tConvective = tAmbient + thetaBase * (numConv / denConv);
-
-            // 3. Very Long Fin (Infinitely long assumption: T -> T_inf)
-            double tInfinite = tAmbient + thetaBase * Math.exp(-m * x);
-
-            System.out.printf("%-10.3f | %-16.2f | %-16.2f | %-16.2f\n", 
-                x, tInsulated, tConvective, tInfinite);
-        }
-        System.out.println("======================================================================");
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 15px;
+      overflow-x: hidden;
     }
-}
+
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 15px;
+      text-align: center;
+      color: #38bdf8;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      width: 100%;
+      max-width: 1100px;
+    }
+
+    @media (max-width: 850px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      color: #f1f5f9;
+      border-bottom: 2px solid #334155;
+      padding-bottom: 6px;
+    }
+
+    /* Sliders & Inputs */
+    .control-group {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+    }
+
+    input[type=range] {
+      accent-color: #38bdf8;
+      cursor: pointer;
+    }
+
+    /* Canvases */
+    canvas {
+      background: #020617;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      width: 100%;
+      display: block;
+    }
+
+    /* Diagnostics Table */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 0.85rem;
+    }
+
+    .metric-box {
+      background: #0f172a;
+      padding: 10px;
+      border-radius: 6px;
+      border-left: 3px solid #38bdf8;
+    }
+
+    .metric-box span {
+      display: block;
+      color: #94a3b8;
+      font-size: 0.75rem;
+      margin-bottom: 2px;
+    }
+
+    .metric-box strong {
+      font-size: 1rem;
+      color: #f8fafc;
+    }
+
+    .equation-box {
+      background: #0f172a;
+      padding: 10px;
+      border-radius: 6px;
+      border-left: 3px solid #f97316;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 48px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Interactive Fin Conduction & Convection Simulation</h1>
+
+  <div class="main-grid">
+    
+    <!-- LEFT PANEL: 2D Heat Visual & Controls -->
+    <div class="card">
+      <h2>2D Heat Flux Visualizer</h2>
+      <canvas id="finCanvas" width="500" height="200"></canvas>
+
+      <h2>Parameters & Material Properties</h2>
+      
+      <div class="control-group">
+        <label>Base Temp (T<sub>b</sub>):</label>
+        <input type="range" id="tBase" min="50" max="200" value="100" step="5" oninput="updateSim()">
+        <span id="val_tBase">100 °C</span>
+      </div>
+
+      <div class="control-group">
+        <label>Ambient Temp (T<sub>∞</sub>):</label>
+        <input type="range" id="tAmbient" min="0" max="50" value="25" step="1" oninput="updateSim()">
+        <span id="val_tAmbient">25 °C</span>
+      </div>
+
+      <div class="control-group">
+        <label>Conductivity (k):</label>
+        <input type="range" id="kVal" min="10" max="400" value="205" step="5" oninput="updateSim()">
+        <span id="val_k">205 W/m·K (Al)</span>
+      </div>
+
+      <div class="control-group">
+        <label>Convection (h):</label>
+        <input type="range" id="hVal" min="5" max="150" value="25" step="5" oninput="updateSim()">
+        <span id="val_h">25 W/m²·K</span>
+      </div>
+
+      <div class="control-group">
+        <label>Fin Length (L):</label>
+        <input type="range" id="lenVal" min="0.02" max="0.30" value="0.10" step="0.01" oninput="updateSim()">
+        <span id="val_len">0.10 m</span>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: Temperature Graph & Thermal Performance -->
+    <div class="card">
+      <h2>Temperature Profile T(x) Along Length</h2>
+      <canvas id="plotCanvas" width="500" height="180"></canvas>
+
+      <h2>Thermal Performance Metrics</h2>
+      <div class="metrics-grid">
+        <div class="metric-box">
+          <span>Fin Parameter (m)</span>
+          <strong id="metric_m">--</strong>
+        </div>
+        <div class="metric-box">
+          <span>Heat Transfer Rate (Q̇<sub>fin</sub>)</span>
+          <strong id="metric_q">--</strong>
+        </div>
+        <div class="metric-box">
+          <span>Fin Efficiency (η<sub>fin</sub>)</span>
+          <strong id="metric_eff">--</strong>
+        </div>
+        <div class="metric-box">
+          <span>Fin Effectiveness (ε)</span>
+          <strong id="metric_eps">--</strong>
+        </div>
+      </div>
+
+      <h2>Insulated Tip Governing Equation</h2>
+      <div class="equation-box" id="eqBox"></div>
+    </div>
+
+  </div>
+
+  <script>
+    // Constant Fin Cross-Section Dimensions
+    const width = 0.05;      // 5 cm
+    const thickness = 0.005;  // 0.5 cm
+    let animOffset = 0;
+
+    function getInputs() {
+      return {
+        tBase: parseFloat(document.getElementById('tBase').value),
+        tAmbient: parseFloat(document.getElementById('tAmbient').value),
+        k: parseFloat(document.getElementById('kVal').value),
+        h: parseFloat(document.getElementById('hVal').value),
+        length: parseFloat(document.getElementById('lenVal').value)
+      };
+    }
+
+    function calculateMetrics(p) {
+      const perimeter = 2 * (width + thickness);
+      const Ac = width * thickness;
+      const As = perimeter * p.length;
+      const thetaBase = p.tBase - p.tAmbient;
+
+      const m = Math.sqrt((p.h * perimeter) / (p.k * Ac));
+      const bigM = Math.sqrt(p.h * perimeter * p.k * Ac) * thetaBase;
+      const qFin = bigM * Math.tanh(m * p.length);
+      const qMax = p.h * As * thetaBase;
+      const efficiency = (qFin / qMax) * 100;
+      const effectiveness = qFin / (p.h * Ac * thetaBase);
+
+      return { perimeter, Ac, thetaBase, m, qFin, efficiency, effectiveness };
+    }
+
+    function updateSim() {
+      const p = getInputs();
+      document.getElementById('val_tBase').innerText = `${p.tBase} °C`;
+      document.getElementById('val_tAmbient').innerText = `${p.tAmbient} °C`;
+      document.getElementById('val_k').innerText = `${p.k} W/m·K`;
+      document.getElementById('val_h').innerText = `${p.h} W/m²·K`;
+      document.getElementById('val_len').innerText = `${p.length.toFixed(2)} m`;
+
+      const m = calculateMetrics(p);
+      document.getElementById('metric_m').innerText = `${m.m.toFixed(2)} m⁻¹`;
+      document.getElementById('metric_q').innerText = `${m.qFin.toFixed(2)} W`;
+      document.getElementById('metric_eff').innerText = `${m.efficiency.toFixed(1)} %`;
+      document.getElementById('metric_eps').innerText = `${m.effectiveness.toFixed(1)}x`;
+
+      if (window.katex) {
+        katex.render("T(x) = T_\\infty + (T_b - T_\\infty)\\frac{\\cosh[m(L - x)]}{\\cosh(mL)}", document.getElementById('eqBox'), { displayMode: true });
+      }
+
+      drawPlot(p, m);
+    }
+
+    // Draw Real-Time Temperature Profiles
+    function drawPlot(p, m) {
+      const cvs = document.getElementById('plotCanvas');
+      const ctx = cvs.getContext('2d');
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+      const padX = 45, padY = 20;
+      const w = cvs.width - padX - 25;
+      const h = cvs.height - padY - 30;
+
+      // Axes
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padX, padY);
+      ctx.lineTo(padX, padY + h);
+      ctx.lineTo(padX + w, padY + h);
+      ctx.stroke();
+
+      // Axis Labels
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(`${p.tBase}°C`, 5, padY + 10);
+      ctx.fillText(`${p.tAmbient}°C`, 5, padY + h);
+      ctx.fillText('x = 0', padX, padY + h + 15);
+      ctx.fillText(`L = ${p.length}m`, padX + w - 40, padY + h + 15);
+
+      // Plot Insulated Tip (Orange)
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+
+      const steps = 50;
+      for (let i = 0; i <= steps; i++) {
+        const u = i / steps;
+        const x = u * p.length;
+        const temp = p.tAmbient + m.thetaBase * (Math.cosh(m.m * (p.length - x)) / Math.cosh(m.m * p.length));
+        const normY = (temp - p.tAmbient) / (p.tBase - p.tAmbient);
+
+        const px = padX + u * w;
+        const py = padY + (1 - normY) * h;
+
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      // Plot Convective Tip (Cyan dashed)
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      for (let i = 0; i <= steps; i++) {
+        const u = i / steps;
+        const x = u * p.length;
+        const num = Math.cosh(m.m * (p.length - x)) + (p.h / (m.m * p.k)) * Math.sinh(m.m * (p.length - x));
+        const den = Math.cosh(m.m * p.length) + (p.h / (m.m * p.k)) * Math.sinh(m.m * p.length);
+        const temp = p.tAmbient + m.thetaBase * (num / den);
+        const normY = (temp - p.tAmbient) / (p.tBase - p.tAmbient);
+
+        const px = padX + u * w;
+        const py = padY + (1 - normY) * h;
+
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Draw 2D Animated Fin Visual
+    function drawFinAnimation() {
+      const cvs = document.getElementById('finCanvas');
+      const ctx = cvs.getContext('2d');
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+      animOffset = (animOffset + 1.2) % 30;
+
+      // Base Wall (Red)
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(20, 20, 35, 160);
+
+      // Fin Body with Conduction Gradient (Red -> Blue)
+      const grad = ctx.createLinearGradient(55, 0, 420, 0);
+      grad.addColorStop(0, '#ef4444');
+      grad.addColorStop(1, '#38bdf8');
+      ctx.fillStyle = grad;
+      ctx.fillRect(55, 75, 365, 50);
+
+      // Internal Conduction Arrows (Moving right)
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 2;
+      for (let x = 60 + animOffset; x < 410; x += 35) {
+        ctx.beginPath();
+        ctx.moveTo(x, 100);
+        ctx.lineTo(x + 15, 100);
+        ctx.stroke();
+      }
+
+      // Convective Arrows Escaping into Ambient (Top & Bottom)
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      for (let x = 80; x < 400; x += 30) {
+        // Upper escape
+        ctx.beginPath();
+        ctx.moveTo(x, 75);
+        ctx.lineTo(x + 10, 45);
+        ctx.stroke();
+
+        // Lower escape
+        ctx.beginPath();
+        ctx.moveTo(x, 125);
+        ctx.lineTo(x + 10, 155);
+        ctx.stroke();
+      }
+
+      // Text Labels
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText('Base (Tb)', 10, 15);
+      ctx.fillText('Convective Heat Loss (h)', 160, 35);
+      ctx.fillText('Conduction (k)', 180, 104);
+
+      requestAnimationFrame(drawFinAnimation);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(updateSim, 150);
+      drawFinAnimation();
+    });
+  </script>
+</body>
+</html>
